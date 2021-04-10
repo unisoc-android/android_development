@@ -53,7 +53,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+import java.text.DecimalFormat;
 
+import android.util.Log;
 /**
  * Application that injects random key events and other actions into the system.
  */
@@ -259,6 +261,17 @@ public class Monkey {
 
     public static String currentPackage;
 
+    /** ace add for controll scriptlog.
+     * Because some times it may block. */
+    private boolean mRecordScriptlog = false;
+    /** ace add for first monkey stop time*/
+    private long mMonkeyStartTime = 0;
+    private long mMonkeyEndTime = 0;
+    private long mFirstANRTime = 0;
+    private long mFirstJavaCrashTime = 0;
+    private long mFirstNativeCrashTime = 0;
+
+    private static final String TAG = "Monkey";
     /**
      * Monitor operations happening in the system.
      */
@@ -330,14 +343,24 @@ public class Monkey {
         public boolean appCrashed(String processName, int pid,
                 String shortMsg, String longMsg,
                 long timeMillis, String stackTrace) {
+            /** ace add for firstJavaCrash */
+            if (0 == mFirstJavaCrashTime && !shortMsg.equals("Native crash")) {
+                String FirstJavaCrashCalendarTime = MonkeyUtils.toCalendarTime(System.currentTimeMillis());
+                mFirstJavaCrashTime = SystemClock.elapsedRealtime();
+                Logger.out.println("// First JavaCrash Time : " + mFirstJavaCrashTime + "; First JavaCrash Calendar Time : " + FirstJavaCrashCalendarTime);
+            }else if (0 == mFirstNativeCrashTime && shortMsg.equals("Native crash")) {
+                String FirstNativeCrashCalendarTime = MonkeyUtils.toCalendarTime(System.currentTimeMillis());
+                mFirstNativeCrashTime = SystemClock.elapsedRealtime();
+                Logger.out.println("// First NativeCrash Time : " + mFirstNativeCrashTime + "; First NativeCrash Calendar Time : " + FirstNativeCrashCalendarTime);                 }
+
             StrictMode.ThreadPolicy savedPolicy = StrictMode.allowThreadDiskWrites();
-            Logger.err.println("// CRASH: " + processName + " (pid " + pid + ")");
+            Logger.err.println("// CRASH: " + processName + " (pid " + pid + ")" + " Time Longth Since Monkey Start: " + (SystemClock.elapsedRealtime() - mMonkeyStartTime));
             Logger.err.println("// Short Msg: " + shortMsg);
             Logger.err.println("// Long Msg: " + longMsg);
             Logger.err.println("// Build Label: " + Build.FINGERPRINT);
             Logger.err.println("// Build Changelist: " + Build.VERSION.INCREMENTAL);
             Logger.err.println("// Build Time: " + Build.TIME);
-            Logger.err.println("// " + stackTrace.replace("\n", "\n// "));
+            //Logger.err.println("// " + stackTrace.replace("\n", "\n// "));/*fix 1154342 close stack print*/
             StrictMode.setThreadPolicy(savedPolicy);
 
             if (mMatchDescription == null
@@ -365,16 +388,22 @@ public class Monkey {
         }
 
         public int appNotResponding(String processName, int pid, String processStats) {
+            /** ace add for firstANR */
+            if (0 == mFirstANRTime) {
+                String FirstANRCalendarTime = MonkeyUtils.toCalendarTime(System.currentTimeMillis());
+                mFirstANRTime = SystemClock.elapsedRealtime();
+                Logger.out.println("// First ANR Time : " + mFirstANRTime + "; First ANR Calendar Time : " + FirstANRCalendarTime);
+            }
             StrictMode.ThreadPolicy savedPolicy = StrictMode.allowThreadDiskWrites();
-            Logger.err.println("// NOT RESPONDING: " + processName + " (pid " + pid + ")");
+            Logger.err.println("// NOT RESPONDING: " + processName + " (pid " + pid + ")" + " Time Longth Since Monkey Start: " + (SystemClock.elapsedRealtime() - mMonkeyStartTime));
             Logger.err.println(processStats);
             StrictMode.setThreadPolicy(savedPolicy);
 
             if (mMatchDescription == null || processStats.contains(mMatchDescription)) {
                 synchronized (Monkey.this) {
-                    mRequestAnrTraces = true;
-                    mRequestDumpsysMemInfo = true;
-                    mRequestProcRank = true;
+                    mRequestAnrTraces = false;
+                    mRequestDumpsysMemInfo = false;
+                    mRequestProcRank = false;
                     if (mRequestBugreport) {
                         mRequestAnrBugreport = true;
                         mReportProcessName = processName;
@@ -530,6 +559,9 @@ public class Monkey {
 
     // Write the numbe of iteration to the log
     private void writeScriptLog(int count) {
+        /** ace add for controll scritplog. */
+        if (!mRecordScriptlog) return;
+
         // TO DO: Add the script file name to the log.
         try {
             Writer output = new BufferedWriter(new FileWriter(new File(
@@ -559,6 +591,9 @@ public class Monkey {
         Process.setArgV0("com.android.commands.monkey");
 
         Logger.err.println("args: " + Arrays.toString(args));
+        if(!Logger.logcat){
+          Log.d(TAG, "args: " + Arrays.toString(args));
+        }
         int resultCode = (new Monkey()).run(args);
         System.exit(resultCode);
     }
@@ -774,10 +809,22 @@ public class Monkey {
         if (crashedAtCycle < mCount - 1) {
             Logger.err.println("** System appears to have crashed at event " + crashedAtCycle
                     + " of " + mCount + " using seed " + mSeed);
+            /** ace add for Monkey End Time */
+            if (0 == mMonkeyEndTime) {
+                String MonkeyEndCalendarTime = MonkeyUtils.toCalendarTime(System.currentTimeMillis());
+                mMonkeyEndTime = SystemClock.elapsedRealtime();
+                Logger.out.println("// Monkey End Time : " + mMonkeyEndTime + "; Monkey End Calendar Time : " + MonkeyEndCalendarTime);
+            }
             return crashedAtCycle;
         } else {
             if (mVerbose > 0) {
                 Logger.out.println("// Monkey finished");
+                /** ace add for Monkey End Time */
+                if (0 == mMonkeyEndTime) {
+                    String MonkeyEndCalendarTime = MonkeyUtils.toCalendarTime(System.currentTimeMillis());
+                    mMonkeyEndTime = SystemClock.elapsedRealtime();
+                    System.out.println("// Monkey End Time : " + mMonkeyEndTime + "; Monkey End Calendar Time : " + MonkeyEndCalendarTime);
+                }
             }
             return 0;
         }
@@ -1106,12 +1153,28 @@ public class Monkey {
     private int runMonkeyCycles() {
         int eventCounter = 0;
         int cycleCounter = 0;
+        int eventFailcounter = 0;
 
         boolean shouldReportAnrTraces = false;
         boolean shouldReportDumpsysMemInfo = false;
         boolean shouldAbort = false;
         boolean systemCrashed = false;
 
+        /** ace add for Monkey Start Time */
+        if (0 == mMonkeyStartTime) {
+            /*Version Informations:*/
+            Logger.out.println("// Monkey Version Informations:  ");
+            Logger.out.println("// Build Label: " + Build.FINGERPRINT);
+            Logger.out.println("// Build Time: " + Build.TIME);
+            Logger.out.println("// Build Type: " + Build.TYPE);
+            Logger.out.println("// Build Tags: " + Build.TAGS);
+            Logger.out.println("// Build Debugable: " + Build.IS_DEBUGGABLE);
+            Logger.out.println("// Build Changelist: " + Build.VERSION.INCREMENTAL);
+            /*Start Time:*/
+            String MonkeyStartCalendarTime = MonkeyUtils.toCalendarTime(System.currentTimeMillis());
+            mMonkeyStartTime = SystemClock.elapsedRealtime();
+            Logger.out.println("// Monkey Start Time : " + mMonkeyStartTime + "; Monkey Start Calendar Time : " + MonkeyStartCalendarTime);
+        }
         try {
             // TO DO : The count should apply to each of the script file.
             while (!systemCrashed && cycleCounter < mCount) {
@@ -1165,6 +1228,12 @@ public class Monkey {
                     }
                 }
 
+		if (0 == mFirstNativeCrashTime && checkNativeCrashes()) {
+		   String FirstNativeCrashCalendarTime = MonkeyUtils.toCalendarTime(System.currentTimeMillis());
+		   mFirstNativeCrashTime = SystemClock.elapsedRealtime();
+		   Logger.out.println("// First NativeCrash Time : " + mFirstNativeCrashTime + "; First NativeCrash Calendar Time : " + FirstNativeCrashCalendarTime);
+		}
+
                 // Report ANR, dumpsys after releasing lock on this.
                 // This ensures the availability of the lock to Activity controller's appNotResponding
                 if (shouldReportAnrTraces) {
@@ -1180,7 +1249,7 @@ public class Monkey {
                 if (shouldAbort) {
                     shouldAbort = false;
                     Logger.out.println("** Monkey aborted due to error.");
-                    Logger.out.println("Events injected: " + eventCounter);
+                    Logger.out.println("Events injected: " + eventCounter + " Events injected fail: " + eventFailcounter);
                     return eventCounter;
                 }
 
@@ -1198,7 +1267,9 @@ public class Monkey {
                     long systemUpTime = SystemClock.elapsedRealtime();
                     Logger.out.println("    //[calendar_time:" + calendarTime + " system_uptime:"
                             + systemUpTime + "]");
-                    Logger.out.println("    // Sending event #" + eventCounter);
+                    DecimalFormat percentFormat = new DecimalFormat("#0.00%");
+                    Logger.out.println("    // Sending event #" + eventCounter + " fail event #" + eventFailcounter +
+                                       " fail percent:" + percentFormat.format((double)eventFailcounter/eventCounter));
                 }
 
                 MonkeyEvent ev = mEventSource.getNextEvent();
@@ -1206,6 +1277,7 @@ public class Monkey {
                     int injectCode = ev.injectEvent(mWm, mAm, mVerbose);
                     if (injectCode == MonkeyEvent.INJECT_FAIL) {
                         Logger.out.println("    // Injection Failed");
+                        eventFailcounter++;
                         if (ev instanceof MonkeyKeyEvent) {
                             mDroppedKeyEvents++;
                         } else if (ev instanceof MonkeyMotionEvent) {

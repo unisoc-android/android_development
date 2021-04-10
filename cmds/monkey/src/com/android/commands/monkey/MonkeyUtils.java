@@ -20,7 +20,7 @@ import java.text.SimpleDateFormat;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
-
+import android.util.Log;
 /**
  * Misc utilities.
  */
@@ -30,7 +30,7 @@ public abstract class MonkeyUtils {
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat(
         "yyyy-MM-dd HH:mm:ss.SSS ");
     private static PackageFilter sFilter;
-
+    private static final String TAG = "Monkey";
     private MonkeyUtils() {
     }
 
@@ -105,7 +105,11 @@ public abstract class MonkeyUtils {
             if (mInvalidPackages.size() > 0) {
                 Iterator<String> it = mInvalidPackages.iterator();
                 while (it.hasNext()) {
-                    Logger.out.println(":DisallowPackage: " + it.next());
+                  String blacklist_str = ":DisallowPackage: " + it.next();
+                  Logger.out.println(blacklist_str);
+                  if(!Logger.logcat){
+                    Log.d(TAG, blacklist_str);
+                  }
                 }
             }
         }

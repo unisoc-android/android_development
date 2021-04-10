@@ -17,6 +17,7 @@
 package com.android.commands.monkey;
 
 import android.util.Log;
+import android.app.ActivityManager;
 
 public abstract class Logger {
     private static final String TAG = "Monkey";
@@ -43,7 +44,7 @@ public abstract class Logger {
     };
 
     public static boolean stdout = true;
-    public static boolean logcat = true;
+    public static boolean logcat = ActivityManager.isLowRamDeviceStatic()? false:true;
 
     public abstract void println(String s);
 
